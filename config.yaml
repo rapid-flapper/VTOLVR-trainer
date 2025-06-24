@@ -1,0 +1,13 @@
+credentials:
+  usernames:
+    user1:
+      email: user1@example.com
+      name: Example User
+      password: '$2b$12$Eix1aE0C0Q3nQ2E9Qd9qC.xV7.aU8.d9e.f5g6h7i8j9k0l' # Hashed password for 'password123'
+cookie:
+  expiry_days: 30
+  key: 'a_random_secret_key' # Change this for production
+  name: 'vtolvr_cookie'
+preauthorized:
+  emails:
+  - not_in_use@example.com

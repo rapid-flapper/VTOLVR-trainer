@@ -1,0 +1,7 @@
+streamlit
+google-generativeai
+streamlit-authenticator
+pypdf
+faiss-cpu
+langchain
+langchain-google-genai
