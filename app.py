@@ -3,9 +3,34 @@ import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 import os
+import json
 from utils import get_pdf_text, get_text_chunks, create_vector_store, get_rag_response
 
-st.set_page_config(page_title="VTOL VR Trainer", page_icon=":airplane:")
+st.set_page_config(page_title="VTOL VR Trainer", page_icon=":airplane:", layout="wide")
+
+# --- CONVERSATION MANAGEMENT ---
+def get_user_conversations_path(username):
+    path = os.path.join("conversations", username)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def list_conversations(username):
+    path = get_user_conversations_path(username)
+    return [f.replace('.json', '') for f in os.listdir(path) if f.endswith('.json')]
+
+def save_conversation(username, chat_name, messages):
+    path = get_user_conversations_path(username)
+    with open(os.path.join(path, f"{chat_name}.json"), 'w') as f:
+        json.dump(messages, f)
+
+def load_conversation(username, chat_name):
+    path = get_user_conversations_path(username)
+    with open(os.path.join(path, f"{chat_name}.json"), 'r') as f:
+        return json.load(f)
+
+def delete_conversation(username, chat_name):
+    path = get_user_conversations_path(username)
+    os.remove(os.path.join(path, f"{chat_name}.json"))
 
 # --- USER AUTHENTICATION ---
 def get_authenticator():
@@ -24,7 +49,6 @@ def get_authenticator():
     )
 
 authenticator = get_authenticator()
-
 name, authentication_status, username = authenticator.login('main')
 
 if not authentication_status:
@@ -34,14 +58,37 @@ if not authentication_status:
         st.warning("Please enter your username and password")
     st.stop()
 
-# --- MAIN APP LOGIC ---
+# --- SESSION STATE INITIALIZATION ---
+if 'current_chat' not in st.session_state:
+    st.session_state.current_chat = None
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+# --- SIDEBAR --- #
 st.sidebar.title(f"Welcome {name}")
-authenticator.logout('Logout', 'sidebar')
 
-st.title("VTOL VR AI Trainer")
-st.write("Your knowledgeable guide to the world of VTOL VR.")
+st.sidebar.header("Chat History")
+if st.sidebar.button("New Chat"):
+    st.session_state.messages = []
+    st.session_state.current_chat = None
+    st.rerun()
 
-# --- API KEY AND KNOWLEDGE BASE SETUP ---
+conversations = list_conversations(username)
+for chat_name in conversations:
+    col1, col2, col3 = st.sidebar.columns([3,1,1])
+    with col1:
+        if st.button(chat_name, key=f"load_{chat_name}", use_container_width=True):
+            st.session_state.messages = load_conversation(username, chat_name)
+            st.session_state.current_chat = chat_name
+            st.rerun()
+    with col3:
+        if st.button("🗑️", key=f"delete_{chat_name}"):
+            delete_conversation(username, chat_name)
+            if st.session_state.current_chat == chat_name:
+                st.session_state.current_chat = None
+                st.session_state.messages = []
+            st.rerun()
+
 st.sidebar.header("Setup")
 api_key = st.sidebar.text_input("Enter your Google API Key", type="password", key="api_key_input")
 
@@ -49,41 +96,58 @@ if st.sidebar.button("Process Knowledge Base"):
     if not api_key:
         st.sidebar.error("Please enter your Google API Key first.")
     else:
-        with st.spinner("Processing... This may take a moment."):
-            kb_path = "knowledge_base"
-            if not os.path.exists(kb_path) or not any(f.endswith('.pdf') for f in os.listdir(kb_path)):
-                st.sidebar.warning("No PDF files found in the 'knowledge_base' directory.")
+        with st.spinner("Processing..."):
+            raw_text = get_pdf_text("knowledge_base")
+            if raw_text:
+                text_chunks = get_text_chunks(raw_text)
+                create_vector_store(text_chunks, api_key)
             else:
-                raw_text = get_pdf_text(kb_path)
-                if raw_text:
-                    text_chunks = get_text_chunks(raw_text)
-                    create_vector_store(text_chunks, api_key)
-                else:
-                    st.sidebar.warning("Could not extract text from PDFs.")
+                st.sidebar.warning("No text found in PDFs in 'knowledge_base' folder.")
 
-# --- CHAT INTERFACE ---
-st.header("Chat")
+authenticator.logout('Logout', 'sidebar')
 
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
+# --- MAIN CHAT INTERFACE --- #
+st.title("VTOL VR AI Trainer")
 
+if st.session_state.current_chat:
+    st.header(f"Chat: {st.session_state.current_chat}")
+else:
+    st.header("New Chat")
+    if st.session_state.messages:
+        new_chat_name = st.text_input("Enter a name for this chat to save it:")
+        if st.button("Save Chat"):
+            if new_chat_name:
+                save_conversation(username, new_chat_name, st.session_state.messages)
+                st.session_state.current_chat = new_chat_name
+                st.rerun()
+            else:
+                st.warning("Please enter a name for the chat.")
+
+# Display chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# Chat input
 if prompt := st.chat_input("Ask me anything about VTOL VR!"):
     if not api_key:
         st.warning("Please enter your Google API Key in the sidebar to chat.")
-    elif not os.path.exists("faiss_index"):
+        st.stop()
+    if not os.path.exists("faiss_index"):
         st.warning("Please process the knowledge base first.")
-    else:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        st.stop()
 
-        with st.spinner("Thinking..."):
-            response = get_rag_response(prompt, api_key)
-            with st.chat_message("assistant"):
-                st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.spinner("Thinking..."):
+        response = get_rag_response(prompt, api_key)
+        with st.chat_message("assistant"):
+            st.markdown(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        
+        # If the chat is already saved, update the saved file
+        if st.session_state.current_chat:
+            save_conversation(username, st.session_state.current_chat, st.session_state.messages)
 
