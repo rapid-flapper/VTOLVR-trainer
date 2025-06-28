@@ -35,11 +35,17 @@ def delete_conversation(username, chat_name):
 # --- USER AUTHENTICATION ---
 def get_authenticator():
     try:
-        with open('config.yaml') as file:
-            config = yaml.load(file, Loader=SafeLoader)
-    except FileNotFoundError:
-        st.error("Configuration file not found. Please make sure 'config.yaml' is in the root directory.")
+        # Load credentials from Streamlit secrets
+        config = {
+            'credentials': json.loads(st.secrets["credentials"]["usernames"]),
+            'cookie': st.secrets["cookie"],
+            'preauthorized': json.loads(st.secrets["preauthorized"]["emails"])
+        }
+    except (KeyError, json.JSONDecodeError) as e:
+        st.error(f"Error loading configuration from Streamlit secrets: {e}")
+        st.info("Please ensure your secrets are configured correctly in the Streamlit Community Cloud settings.")
         st.stop()
+
     return stauth.Authenticate(
         config['credentials'],
         config['cookie']['name'],
@@ -90,19 +96,21 @@ for chat_name in conversations:
             st.rerun()
 
 st.sidebar.header("Setup")
-api_key = st.sidebar.text_input("Enter your Google API Key", type="password", key="api_key_input")
+# Get API key from secrets
+api_key = st.secrets.get("google_api_key")
+
+if not api_key:
+    st.sidebar.error("Google API Key not found. Please add it to your Streamlit secrets.")
+    st.stop()
 
 if st.sidebar.button("Process Knowledge Base"):
-    if not api_key:
-        st.sidebar.error("Please enter your Google API Key first.")
-    else:
-        with st.spinner("Processing..."):
-            raw_text = get_pdf_text("knowledge_base")
-            if raw_text:
-                text_chunks = get_text_chunks(raw_text)
-                create_vector_store(text_chunks, api_key)
-            else:
-                st.sidebar.warning("No text found in PDFs in 'knowledge_base' folder.")
+    with st.spinner("Processing..."):
+        raw_text = get_pdf_text("knowledge_base")
+        if raw_text:
+            text_chunks = get_text_chunks(raw_text)
+            create_vector_store(text_chunks, api_key)
+        else:
+            st.sidebar.warning("No text found in PDFs in 'knowledge_base' folder.")
 
 authenticator.logout('Logout', 'sidebar')
 
@@ -130,9 +138,6 @@ for message in st.session_state.messages:
 
 # Chat input
 if prompt := st.chat_input("Ask me anything about VTOL VR!"):
-    if not api_key:
-        st.warning("Please enter your Google API Key in the sidebar to chat.")
-        st.stop()
     if not os.path.exists("faiss_index"):
         st.warning("Please process the knowledge base first.")
         st.stop()
@@ -150,4 +155,3 @@ if prompt := st.chat_input("Ask me anything about VTOL VR!"):
         # If the chat is already saved, update the saved file
         if st.session_state.current_chat:
             save_conversation(username, st.session_state.current_chat, st.session_state.messages)
-
