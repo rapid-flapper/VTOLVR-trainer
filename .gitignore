@@ -17,3 +17,6 @@ conversations/
 
 # Configuration files
 config.yaml
+
+# Local streamlit secrets
+.streamlit/

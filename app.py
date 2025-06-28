@@ -40,10 +40,7 @@ def get_authenticator():
             'credentials': {
                 'usernames': json.loads(st.secrets["credentials"]["usernames"])
             },
-            'cookie': st.secrets["cookie"],
-            'preauthorized': {
-                'emails': json.loads(st.secrets["preauthorized"]["emails"])
-            }
+            'cookie': st.secrets["cookie"]
         }
     except (KeyError, json.JSONDecodeError) as e:
         st.error(f"Error loading configuration from Streamlit secrets: {e}")
@@ -54,8 +51,7 @@ def get_authenticator():
         config['credentials'],
         config['cookie']['name'],
         config['cookie']['key'],
-        config['cookie']['expiry_days'],
-        config['preauthorized']
+        config['cookie']['expiry_days']
     )
 
 authenticator = get_authenticator()

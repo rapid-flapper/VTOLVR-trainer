@@ -7,3 +7,4 @@ faiss-cpu
 langchain
 langchain-google-genai
 langchain-community
+toml
