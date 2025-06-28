@@ -55,103 +55,109 @@ def get_authenticator():
     )
 
 authenticator = get_authenticator()
-name, authentication_status, username = authenticator.login('main')
+authenticator.login()
 
-if not authentication_status:
-    if authentication_status == False:
-        st.error("Username/password is incorrect")
-    elif authentication_status == None:
-        st.warning("Please enter your username and password")
+if st.session_state["authentication_status"] is False:
+    st.error('Username/password is incorrect')
+    st.stop()
+elif st.session_state["authentication_status"] is None:
+    st.warning('Please enter your username and password')
     st.stop()
 
-# --- SESSION STATE INITIALIZATION ---
-if 'current_chat' not in st.session_state:
-    st.session_state.current_chat = None
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
+# --- Main app logic for authenticated users ---
+if st.session_state["authentication_status"]:
+    name = st.session_state["name"]
+    username = st.session_state["username"]
 
-# --- SIDEBAR --- #
-st.sidebar.title(f"Welcome {name}")
+    # --- SESSION STATE INITIALIZATION ---
+    if 'current_chat' not in st.session_state:
+        st.session_state.current_chat = None
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
 
-st.sidebar.header("Chat History")
-if st.sidebar.button("New Chat"):
-    st.session_state.messages = []
-    st.session_state.current_chat = None
-    st.rerun()
+    # --- SIDEBAR --- #
+    st.sidebar.title(f"Welcome {name}")
 
-conversations = list_conversations(username)
-for chat_name in conversations:
-    col1, col2, col3 = st.sidebar.columns([3,1,1])
-    with col1:
-        if st.button(chat_name, key=f"load_{chat_name}", use_container_width=True):
-            st.session_state.messages = load_conversation(username, chat_name)
-            st.session_state.current_chat = chat_name
-            st.rerun()
-    with col3:
-        if st.button("🗑️", key=f"delete_{chat_name}"):
-            delete_conversation(username, chat_name)
-            if st.session_state.current_chat == chat_name:
-                st.session_state.current_chat = None
-                st.session_state.messages = []
-            st.rerun()
+    st.sidebar.header("Chat History")
+    if st.sidebar.button("New Chat"):
+        st.session_state.messages = []
+        st.session_state.current_chat = None
+        st.rerun()
 
-st.sidebar.header("Setup")
-# Get API key from secrets
-api_key = st.secrets.get("google_api_key")
-
-if not api_key:
-    st.sidebar.error("Google API Key not found. Please add it to your Streamlit secrets.")
-    st.stop()
-
-if st.sidebar.button("Process Knowledge Base"):
-    with st.spinner("Processing..."):
-        raw_text = get_pdf_text("knowledge_base")
-        if raw_text:
-            text_chunks = get_text_chunks(raw_text)
-            create_vector_store(text_chunks, api_key)
-        else:
-            st.sidebar.warning("No text found in PDFs in 'knowledge_base' folder.")
-
-authenticator.logout('Logout', 'sidebar')
-
-# --- MAIN CHAT INTERFACE --- #
-st.title("VTOL VR AI Trainer")
-
-if st.session_state.current_chat:
-    st.header(f"Chat: {st.session_state.current_chat}")
-else:
-    st.header("New Chat")
-    if st.session_state.messages:
-        new_chat_name = st.text_input("Enter a name for this chat to save it:")
-        if st.button("Save Chat"):
-            if new_chat_name:
-                save_conversation(username, new_chat_name, st.session_state.messages)
-                st.session_state.current_chat = new_chat_name
+    conversations = list_conversations(username)
+    for chat_name in conversations:
+        col1, col2, col3 = st.sidebar.columns([3, 1, 1])
+        with col1:
+            if st.button(chat_name, key=f"load_{chat_name}", use_container_width=True):
+                st.session_state.messages = load_conversation(username, chat_name)
+                st.session_state.current_chat = chat_name
                 st.rerun()
-            else:
-                st.warning("Please enter a name for the chat.")
+        with col3:
+            if st.button("🗑️", key=f"delete_{chat_name}"):
+                delete_conversation(username, chat_name)
+                if st.session_state.current_chat == chat_name:
+                    st.session_state.current_chat = None
+                    st.session_state.messages = []
+                st.rerun()
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    st.sidebar.header("Setup")
+    # Get API key from secrets
+    api_key = st.secrets.get("google_api_key")
 
-# Chat input
-if prompt := st.chat_input("Ask me anything about VTOL VR!"):
-    if not os.path.exists("faiss_index"):
-        st.warning("Please process the knowledge base first.")
+    if not api_key:
+        st.sidebar.error("Google API Key not found. Please add it to your Streamlit secrets.")
         st.stop()
 
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    if st.sidebar.button("Process Knowledge Base"):
+        with st.spinner("Processing..."):
+            raw_text = get_pdf_text("knowledge_base")
+            if raw_text:
+                text_chunks = get_text_chunks(raw_text)
+                create_vector_store(text_chunks, api_key)
+            else:
+                st.sidebar.warning("No text found in PDFs in 'knowledge_base' folder.")
 
-    with st.spinner("Thinking..."):
-        response = get_rag_response(prompt, api_key)
-        with st.chat_message("assistant"):
-            st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-        # If the chat is already saved, update the saved file
-        if st.session_state.current_chat:
-            save_conversation(username, st.session_state.current_chat, st.session_state.messages)
+    with st.sidebar:
+        authenticator.logout()
+
+    # --- MAIN CHAT INTERFACE --- #
+    st.title("VTOL VR AI Trainer")
+
+    if st.session_state.current_chat:
+        st.header(f"Chat: {st.session_state.current_chat}")
+    else:
+        st.header("New Chat")
+        if st.session_state.messages:
+            new_chat_name = st.text_input("Enter a name for this chat to save it:")
+            if st.button("Save Chat"):
+                if new_chat_name:
+                    save_conversation(username, new_chat_name, st.session_state.messages)
+                    st.session_state.current_chat = new_chat_name
+                    st.rerun()
+                else:
+                    st.warning("Please enter a name for the chat.")
+
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat input
+    if prompt := st.chat_input("Ask me anything about VTOL VR!"):
+        if not os.path.exists("faiss_index"):
+            st.warning("Please process the knowledge base first.")
+            st.stop()
+
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.spinner("Thinking..."):
+            response = get_rag_response(prompt, api_key)
+            with st.chat_message("assistant"):
+                st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+            # If the chat is already saved, update the saved file
+            if st.session_state.current_chat:
+                save_conversation(username, st.session_state.current_chat, st.session_state.messages)
