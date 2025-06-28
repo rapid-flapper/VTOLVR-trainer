@@ -1,7 +1,9 @@
 streamlit
 google-generativeai
 streamlit-authenticator
+PyYAML
 pypdf
 faiss-cpu
 langchain
 langchain-google-genai
+langchain-community
