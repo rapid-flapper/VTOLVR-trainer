@@ -37,9 +37,13 @@ def get_authenticator():
     try:
         # Load credentials from Streamlit secrets
         config = {
-            'credentials': json.loads(st.secrets["credentials"]["usernames"]),
+            'credentials': {
+                'usernames': json.loads(st.secrets["credentials"]["usernames"])
+            },
             'cookie': st.secrets["cookie"],
-            'preauthorized': json.loads(st.secrets["preauthorized"]["emails"])
+            'preauthorized': {
+                'emails': json.loads(st.secrets["preauthorized"]["emails"])
+            }
         }
     except (KeyError, json.JSONDecodeError) as e:
         st.error(f"Error loading configuration from Streamlit secrets: {e}")
